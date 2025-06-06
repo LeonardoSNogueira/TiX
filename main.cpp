@@ -29,6 +29,18 @@
 #define PINO_SDA 23
 #define PINO_SCL 22
 
+#define JOGADOR_VS_JOGADOR 0
+#define JOGADOR_VS_MAQUINA 1
+#define CONFIGURAR_TEMPO 2
+#define MENU 3
+
+#define ACIONADO true
+#define DESACIONADO false
+
+#define BOTAO_ESQUERDA estado_botoes.at(0)
+#define BOTAO_CENTRO estado_botoes.at(1)
+#define BOTAO_DIREITA estado_botoes.at(2)
+
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #erro Bluetooth nao esta habilitado! Por favor, execute "make menuconfig" e habilite-o
 #endif
@@ -38,14 +50,31 @@ using namespace std;
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 BluetoothSerial SerialBT;
 
+unsigned int opcao_selecionada = MENU;
+unsigned int posicao_seta = JOGADOR_VS_JOGADOR;
 vector<int> casas = {PINO_CASA0, PINO_CASA1, PINO_CASA2, PINO_CASA3, PINO_CASA4, PINO_CASA5, PINO_CASA6, PINO_CASA7};
 vector<int> botoes = {PINO_BOTAO_ESQUERDA, PINO_BOTAO_CENTRO, PINO_BOTAO_DIREITA};
 vector<char> estado_atual = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
 vector<char> estado_anterior = {'V', 'V', 'V', 'V', 'V', 'V', 'V', 'V'}; // C = Cavalo, R = Rei, T = Torre, V = Vazio
+vector<bool> estado_botoes = {DESACIONADO, DESACIONADO, DESACIONADO};
 
 void CapturaEstadoAtual();
 void PrintaEstadoAtual();
 void EnviaEstadoAtual();
+void PrintaMenu();
+void LeBotoes();
+void AtualizaOpcaoSelecionada();
+
+byte seta[] = {
+                B00000,
+                B00100,
+                B00110,
+                B11111,
+                B11111,
+                B00110,
+                B00100,
+                B00000
+              };
 
 void setup()
 {
@@ -64,20 +93,44 @@ void setup()
 
   lcd.init();
   lcd.backlight();
+  lcd.createChar(0, seta); //0 = seta
+
+  PrintaMenu();
 }
 
 void loop()
 {
-  lcd.setCursor(8,1);
-  lcd.print("TiX");
-
-  CapturaEstadoAtual();
-  
-  if(estado_atual != estado_anterior)
+  switch (opcao_selecionada)
   {
-    PrintaEstadoAtual();
-    estado_anterior = estado_atual;
-    EnviaEstadoAtual();
+    case JOGADOR_VS_JOGADOR:
+      CapturaEstadoAtual();
+  
+      if(estado_atual != estado_anterior)
+      {
+        PrintaEstadoAtual();
+        estado_anterior = estado_atual;
+        EnviaEstadoAtual();
+      }
+      break;
+
+    case JOGADOR_VS_MAQUINA:
+      CapturaEstadoAtual();
+  
+      if(estado_atual != estado_anterior)
+      {
+        PrintaEstadoAtual();
+        estado_anterior = estado_atual;
+        EnviaEstadoAtual();
+      }
+      break;
+
+    case CONFIGURAR_TEMPO:
+      break;
+    
+    default:
+      LeBotoes();
+      AtualizaOpcaoSelecionada();
+      break;
   }
 }
 
@@ -112,4 +165,69 @@ void EnviaEstadoAtual()
     string_estado_atual += estado_atual.at(i);
   
   SerialBT.println(string_estado_atual);
+}
+
+void PrintaMenu()
+{
+  lcd.home();
+  lcd.write(0); //0 = seta
+
+  lcd.setCursor(2, 0);
+  lcd.print("Jogador X Jogador");
+
+  lcd.setCursor(2, 1);
+  lcd.print("Jogador X Maquina");
+  
+  lcd.setCursor(2, 2);
+  lcd.print("Configurar Tempo");
+}
+
+void LeBotoes()
+{
+  delay(150); //Para tripidação
+
+  for(int i=0; i<botoes.size(); i++)
+  {
+    if(digitalRead(botoes.at(i)) == 1) //Se estiver desacionado é 1 (resistor de pull-up)
+      estado_botoes.at(i) = DESACIONADO;
+    else
+      estado_botoes.at(i) = ACIONADO;
+  }
+}
+
+void AtualizaOpcaoSelecionada()
+{
+  if(BOTAO_CENTRO == ACIONADO)
+  {
+    opcao_selecionada = posicao_seta;
+    lcd.clear();
+  }
+  else if(BOTAO_ESQUERDA == ACIONADO && BOTAO_DIREITA == ACIONADO)
+    return;
+  else if (BOTAO_ESQUERDA == ACIONADO)
+  {
+    lcd.setCursor(0, posicao_seta);
+    lcd.print(" ");
+
+    if(posicao_seta == CONFIGURAR_TEMPO)
+      posicao_seta = JOGADOR_VS_JOGADOR;
+    else
+      posicao_seta += 1;
+
+    lcd.setCursor(0, posicao_seta);
+    lcd.write(0); //0 = seta
+  }
+  else if(BOTAO_DIREITA == ACIONADO)
+  {
+    lcd.setCursor(0, posicao_seta);
+    lcd.print(" ");
+
+    if(posicao_seta == JOGADOR_VS_JOGADOR)
+      posicao_seta = CONFIGURAR_TEMPO;
+    else
+      posicao_seta -= 1;
+
+    lcd.setCursor(0, posicao_seta);
+    lcd.write(0); //0 = seta
+  }
 }
