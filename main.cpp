@@ -29,10 +29,15 @@
 #define PINO_SDA 23
 #define PINO_SCL 22
 
-#define JOGADOR_VS_JOGADOR 0
-#define JOGADOR_VS_MAQUINA 1
-#define CONFIGURAR_TEMPO 2
-#define MENU 3
+#define LINHA_JOGADOR_VS_JOGADOR 0
+#define LINHA_JOGADOR_VS_MAQUINA 1
+#define LINHA_CONFIGURAR_TEMPO 2
+
+//Não há nenhuma relação entre LINHA_X e X
+#define MENU 0
+#define JOGADOR_VS_JOGADOR 1
+#define JOGADOR_VS_MAQUINA 2
+#define CONFIGURAR_TEMPO 3
 
 #define ACIONADO true
 #define DESACIONADO false
@@ -50,8 +55,9 @@ using namespace std;
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 BluetoothSerial SerialBT;
 
+bool primeira_vez = true;
 unsigned int opcao_selecionada = MENU;
-unsigned int posicao_seta = JOGADOR_VS_JOGADOR;
+unsigned int posicao_seta = LINHA_JOGADOR_VS_JOGADOR;
 vector<int> casas = {PINO_CASA0, PINO_CASA1, PINO_CASA2, PINO_CASA3, PINO_CASA4, PINO_CASA5, PINO_CASA6, PINO_CASA7};
 vector<int> botoes = {PINO_BOTAO_ESQUERDA, PINO_BOTAO_CENTRO, PINO_BOTAO_DIREITA};
 vector<char> estado_atual = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
@@ -63,17 +69,17 @@ void PrintaEstadoAtual();
 void EnviaEstadoAtual();
 void PrintaMenu();
 void LeBotoes();
-void AtualizaOpcaoSelecionada();
+void AtualizaOpcaoSelecionada(unsigned int primeira_linha_valida, unsigned int ultima_linha_valida);
 
 byte seta[] = {
-                B00000,
-                B00100,
-                B00110,
-                B11111,
-                B11111,
-                B00110,
-                B00100,
-                B00000
+                0x00,
+                0x04,
+                0x06,
+                0x1F,
+                0x1F,
+                0x06,
+                0x04,
+                0x00
               };
 
 void setup()
@@ -93,9 +99,7 @@ void setup()
 
   lcd.init();
   lcd.backlight();
-  lcd.createChar(0, seta); //0 = seta
-
-  PrintaMenu();
+  lcd.createChar(0, seta); //Na posição de memória 0 do LCD está armazenada a seta
 }
 
 void loop()
@@ -128,8 +132,14 @@ void loop()
       break;
     
     default:
+      if(primeira_vez == true)
+      {
+        PrintaMenu();
+        primeira_vez = false;
+      }
+
       LeBotoes();
-      AtualizaOpcaoSelecionada();
+      AtualizaOpcaoSelecionada(LINHA_JOGADOR_VS_JOGADOR, LINHA_CONFIGURAR_TEMPO);
       break;
   }
 }
@@ -169,7 +179,7 @@ void EnviaEstadoAtual()
 
 void PrintaMenu()
 {
-  lcd.home();
+  lcd.home(); //Desce a seta
   lcd.write(0); //0 = seta
 
   lcd.setCursor(2, 0);
@@ -184,7 +194,7 @@ void PrintaMenu()
 
 void LeBotoes()
 {
-  delay(150); //Para tripidação
+  delay(150); //Resolve a tripidação
 
   for(int i=0; i<botoes.size(); i++)
   {
@@ -195,11 +205,13 @@ void LeBotoes()
   }
 }
 
-void AtualizaOpcaoSelecionada()
+void AtualizaOpcaoSelecionada(unsigned int primeira_linha_valida, unsigned int ultima_linha_valida)
 {
   if(BOTAO_CENTRO == ACIONADO)
   {
     opcao_selecionada = posicao_seta;
+    primeira_vez = true;
+    posicao_seta = 0;
     lcd.clear();
   }
   else if(BOTAO_ESQUERDA == ACIONADO && BOTAO_DIREITA == ACIONADO)
@@ -209,25 +221,25 @@ void AtualizaOpcaoSelecionada()
     lcd.setCursor(0, posicao_seta);
     lcd.print(" ");
 
-    if(posicao_seta == CONFIGURAR_TEMPO)
-      posicao_seta = JOGADOR_VS_JOGADOR;
+    if(posicao_seta == ultima_linha_valida)
+      posicao_seta = primeira_linha_valida;
     else
-      posicao_seta += 1;
+      posicao_seta += 1; //Desce a seta
 
     lcd.setCursor(0, posicao_seta);
-    lcd.write(0); //0 = seta
+    lcd.write(0); //Desenha a seta
   }
   else if(BOTAO_DIREITA == ACIONADO)
   {
     lcd.setCursor(0, posicao_seta);
     lcd.print(" ");
 
-    if(posicao_seta == JOGADOR_VS_JOGADOR)
-      posicao_seta = CONFIGURAR_TEMPO;
+    if(posicao_seta == primeira_linha_valida)
+      posicao_seta = ultima_linha_valida;
     else
-      posicao_seta -= 1;
+      posicao_seta -= 1; //Sobe a seta
 
     lcd.setCursor(0, posicao_seta);
-    lcd.write(0); //0 = seta
+    lcd.write(0); //Desenha a seta
   }
 }
