@@ -179,8 +179,8 @@ void EnviaEstadoAtual()
 
 void PrintaMenu()
 {
-  lcd.home(); //Desce a seta
-  lcd.write(0); //0 = seta
+  lcd.home();
+  lcd.write(0); //Desenha a seta
 
   lcd.setCursor(2, 0);
   lcd.print("Jogador X Jogador");
