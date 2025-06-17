@@ -81,9 +81,14 @@
 #define VOLTAR_CONFIGURAR_TEMPO LINHA_VOLTAR_CONFIGURAR_TEMPO + 40
 
 //Estado dos botões (ACIONADO/DESACIONADO)
-#define BOTAO_ESQUERDA estado_botoes.at(0)
-#define BOTAO_CENTRO estado_botoes.at(1)
-#define BOTAO_DIREITA estado_botoes.at(2)
+#define ESTADO_BOTAO_ESQUERDA estado_botoes.at(0)
+#define ESTADO_BOTAO_CENTRO estado_botoes.at(1)
+#define ESTADO_BOTAO_DIREITA estado_botoes.at(2)
+
+//Diferenciar último botão acionado
+#define BOTAO_ESQUERDA 0
+#define BOTAO_CENTRO 1
+#define BOTAO_DIREITA 2
 
 //Notas para efeitos sonoros
 #define NOTE_B4  494
@@ -118,11 +123,12 @@ unsigned int tempo_configurado = 5*60; //Este valor só foi utilizado na primeir
 unsigned int tempo_configurado_anterior = tempo_configurado;
 unsigned int tempo_restante_pretas = tempo_configurado;
 unsigned int tempo_restante_brancas = tempo_configurado;
+unsigned int botao_acionado_anterior = BOTAO_ESQUERDA; //Impede ação se o botão que passa o turno para as brancas for clicado, já que as brancas já iniciam o jogo
 vector<int> botoes = {PINO_BOTAO_ESQUERDA, PINO_BOTAO_CENTRO, PINO_BOTAO_DIREITA};
 vector<int> casas = {PINO_CASA0, PINO_CASA1, PINO_CASA2, PINO_CASA3, PINO_CASA4, PINO_CASA5, PINO_CASA6, PINO_CASA7};
 vector<bool> estado_botoes = {DESACIONADO, DESACIONADO, DESACIONADO};
 vector<char> estado_atual = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
-vector<char> estado_anterior = {'V', 'V', 'V', 'V', 'V', 'V', 'V', 'V'}; // C = Cavalo, R = Rei, T = Torre, V = Vazio
+vector<char> estado_anterior = {'R', 'C', 'T', 'V', 'V', 'T', 'C', 'R'}; // C = Cavalo, R = Rei, T = Torre, V = Vazio
 
 void CapturaEstadoAtual();
 void PrintaEstadoAtual();
@@ -251,7 +257,7 @@ void setup()
   lcd.createChar(I_BACKLIGHT_INVERTIDO, i_backlight_invertido);
   lcd.createChar(X_BACKLIGHT_INVERTIDO, x_backlight_invertido);
 
-  PrintaAbertura();
+  //PrintaAbertura();
 }
 
 void loop()
@@ -279,14 +285,6 @@ void loop()
 
       LeBotoes();
       AtualizaOpcaoSelecionadaMenu(LINHA_INICIAR_JOGADOR_VS_JOGADOR, LINHA_VOLTAR_JOGADOR_VS_MAQUINA, 20, SOM_PADRAO);
-      /*CapturaEstadoAtual();
-  
-      if(estado_atual != estado_anterior)
-      {
-        PrintaEstadoAtual();
-        estado_anterior = estado_atual;
-        EnviaEstadoAtual();
-      }*/
       break;
 
     case CONTINUAR:
@@ -433,7 +431,7 @@ void LeBotoes()
 
 void AtualizaOpcaoSelecionadaMenu(unsigned int primeira_linha_valida, unsigned int ultima_linha_valida, unsigned int incremento_linha, unsigned int som_confirmacao)
 {
-  if(BOTAO_CENTRO == ACIONADO)
+  if(ESTADO_BOTAO_CENTRO == ACIONADO)
   {
     opcao_selecionada = posicao_seta + incremento_linha;
     primeiro_loop = true;
@@ -441,15 +439,18 @@ void AtualizaOpcaoSelecionadaMenu(unsigned int primeira_linha_valida, unsigned i
     lcd.clear();
 
     if(som_confirmacao == SOM_FIM_PARTIDA && opcao_selecionada == LINHA_ENCERRAR_PARTIDA + incremento_linha)
+    {
       SomFimPartida();
+      botao_acionado_anterior = BOTAO_ESQUERDA; //Reseta o estado do último botão acionado
+    }
     else if(som_confirmacao == SOM_INICIAR_PARTIDA && opcao_selecionada == LINHA_INICIAR_JOGADOR_VS_JOGADOR + incremento_linha)
       SomIniciarPartida();
     else
       SomConfirmar();
   }
-  else if(BOTAO_ESQUERDA == ACIONADO && BOTAO_DIREITA == ACIONADO)
+  else if(ESTADO_BOTAO_ESQUERDA == ACIONADO && ESTADO_BOTAO_DIREITA == ACIONADO)
     return;
-  else if (BOTAO_ESQUERDA == ACIONADO)
+  else if (ESTADO_BOTAO_ESQUERDA == ACIONADO)
   {
     lcd.setCursor(0, posicao_seta);
     lcd.print(" ");
@@ -463,7 +464,7 @@ void AtualizaOpcaoSelecionadaMenu(unsigned int primeira_linha_valida, unsigned i
     lcd.write(SETA_DIREITA);
     SomNavegacao();
   }
-  else if(BOTAO_DIREITA == ACIONADO)
+  else if(ESTADO_BOTAO_DIREITA == ACIONADO)
   {
     lcd.setCursor(0, posicao_seta);
     lcd.print(" ");
@@ -553,16 +554,16 @@ void AtualizaCronometro() //Sobreecreve dados ciclicamente mesmo sem terem mudad
 
 void AtualizaTurnoEPause()
 {
-  if(BOTAO_CENTRO == ACIONADO)
+  if(ESTADO_BOTAO_CENTRO == ACIONADO)
   {
     opcao_selecionada = MENU_PAUSE;
     primeiro_loop = true;
     posicao_seta = 0;
     lcd.clear();
   }
-  else if(BOTAO_ESQUERDA == ACIONADO && BOTAO_DIREITA == ACIONADO)
+  else if(ESTADO_BOTAO_ESQUERDA == ACIONADO && ESTADO_BOTAO_DIREITA == ACIONADO)
     return;
-  else if (BOTAO_ESQUERDA == ACIONADO)
+  else if (ESTADO_BOTAO_ESQUERDA == ACIONADO && botao_acionado_anterior != BOTAO_ESQUERDA)
   {
     turno = BRANCAS;
 
@@ -571,8 +572,19 @@ void AtualizaTurnoEPause()
 
     lcd.setCursor(9, 1);
     lcd.write(SETA_ESQUERDA);
+
+    CapturaEstadoAtual();
+  
+    PrintaEstadoAtual();
+    estado_anterior = estado_atual;
+    EnviaEstadoAtual();
+    Serial.print("Tempo restante pretas: ");
+    Serial.println(tempo_restante_pretas);
+    SerialBT.println(tempo_restante_pretas);
+
+    botao_acionado_anterior = BOTAO_ESQUERDA;
   }
-  else if(BOTAO_DIREITA == ACIONADO)
+  else if(ESTADO_BOTAO_DIREITA == ACIONADO && botao_acionado_anterior != BOTAO_DIREITA)
   {
     turno = PRETAS;
 
@@ -581,6 +593,17 @@ void AtualizaTurnoEPause()
 
     lcd.setCursor(10, 1);
     lcd.write(SETA_DIREITA);
+
+    CapturaEstadoAtual();
+
+    PrintaEstadoAtual();
+    estado_anterior = estado_atual;
+    EnviaEstadoAtual();
+    Serial.print("Tempo restante brancas: ");
+    Serial.println(tempo_restante_brancas);
+    SerialBT.println(tempo_restante_brancas);
+
+    botao_acionado_anterior = BOTAO_DIREITA;
   }
 }
 
@@ -626,7 +649,7 @@ void PrintaTempo(unsigned int linha, unsigned int coluna, unsigned int tempo)
 
 void ConfigurarTempo()
 {
-  if(BOTAO_CENTRO == ACIONADO)
+  if(ESTADO_BOTAO_CENTRO == ACIONADO)
   {
     opcao_selecionada = MENU_CONFIGURAR_TEMPO;
     primeiro_loop = true;
@@ -645,9 +668,9 @@ void ConfigurarTempo()
       tempo_configurado_anterior = tempo_configurado;
     }
   }
-  else if(BOTAO_ESQUERDA == ACIONADO && BOTAO_DIREITA == ACIONADO)
+  else if(ESTADO_BOTAO_ESQUERDA == ACIONADO && ESTADO_BOTAO_DIREITA == ACIONADO)
     return;
-  else if (BOTAO_ESQUERDA == ACIONADO)
+  else if (ESTADO_BOTAO_ESQUERDA == ACIONADO)
   {
     if(tempo_configurado > 0)
     {
@@ -655,7 +678,7 @@ void ConfigurarTempo()
       SomConfigurarTempo();
     }
   }
-  else if(BOTAO_DIREITA == ACIONADO)
+  else if(ESTADO_BOTAO_DIREITA == ACIONADO)
   {
     if(tempo_configurado < 9*60*60 + 59*60)
     {
