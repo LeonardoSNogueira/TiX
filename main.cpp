@@ -305,7 +305,7 @@ void setup()
   lcd.createChar(I_BACKLIGHT_INVERTIDO, i_backlight_invertido);
   lcd.createChar(X_BACKLIGHT_INVERTIDO, x_backlight_invertido);
   
-  PrintaAbertura();
+  //PrintaAbertura();
 }
 
 void loop()
@@ -413,6 +413,7 @@ void loop()
     case MENU_FIM_PARTIDA:
     if(primeiro_loop == true)
     {
+      lcd.clear();
       PrintaMenuFimPartida();
       primeiro_loop = false;
       posicao_seta = 2;
@@ -648,7 +649,24 @@ void AtualizaCronometro() //Sobreecreve dados ciclicamente mesmo sem terem mudad
   }
   
   PrintaTempo(1, 1, tempo_restante_brancas);
-  PrintaTempo(12, 1, tempo_restante_pretas);  
+  PrintaTempo(12, 1, tempo_restante_pretas);
+
+  if(tempo_restante_brancas <= 0)
+  {
+    EnviaMensagem();
+
+    opcao_selecionada = MENU_FIM_PARTIDA;
+    resultado_jogo = VITORIA_PRETAS;
+    primeiro_loop = 1;
+  }
+  else if(tempo_restante_pretas <= 0)
+  {
+    EnviaMensagem();
+
+    opcao_selecionada = MENU_FIM_PARTIDA;
+    resultado_jogo = VITORIA_BRANCAS;
+    primeiro_loop = 1;
+  }
 }
 
 void AtualizaTurnoEPause()
@@ -744,7 +762,6 @@ void AnalisaMensagemRecebida()
       primeiro_loop = true;
       opcao_selecionada = MENU_FIM_PARTIDA;
       resultado_jogo = mensagem_recebida[4];
-      lcd.clear();
     }
   }
 }
