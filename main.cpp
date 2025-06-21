@@ -1,4 +1,3 @@
-
 #include <vector>
 #include <Wire.h>
 #include <Arduino.h>
@@ -6,12 +5,15 @@
 #include "BluetoothSerial.h"
 #include <LiquidCrystal_I2C.h>
 
-#define VALOR_ANALOGICO_REI 1424 // = 330 OHM (COR RESISTOR = LLMD)
-#define VALOR_ANALOGICO_TORRE 1063 // = 220 OHM (COR RESISTOR = VVMD)
 #define VALOR_ANALOGICO_VAZIO 4095 // = 0 OHM
-#define VALOR_ANALOGICO_CAVALO 511 // 100OHM (COR RESISTOR = MPMD)
+#define VALOR_ANALOGICO_REI_PRETAS 1980 // = 560 OHM (COR RESISTOR = VAMD)
+#define VALOR_ANALOGICO_TORRE_PRETAS 2880 // = 1500 OHM (COR RESISTOR = MVVD)
+#define VALOR_ANALOGICO_CAVALO_PRETAS 240 // = 33 OHM (COR RESISTOR = LLPD)
+#define VALOR_ANALOGICO_REI_BRANCAS 1424 // = 330 OHM (COR RESISTOR = LLMD)
+#define VALOR_ANALOGICO_TORRE_BRANCAS 1063 // = 220 OHM (COR RESISTOR = VVMD)
+#define VALOR_ANALOGICO_CAVALO_BRANCAS 511 // = 10 0OHM (COR RESISTOR = MPMD)
 
-#define TOLERANCIA 200 //Tolerância das leituras dos valores analógicos
+#define TOLERANCIA 120 //Tolerância das leituras dos valores analógicos
 
 #define PINO_CASA0 34
 #define PINO_CASA1 35
@@ -39,19 +41,30 @@
 #define ACIONADO true
 #define DESACIONADO false
 
+//Mensagem recebida do estado do lance
+#define LANCE_VALIDO '1'
+#define LANCE_INVALIDO '0'
+
+//Mensagem recebida do estado da partida
+#define PARTIDA_CONTINUA '0'
+#define VITORIA_BRANCAS '1'
+#define VITORIA_PRETAS '2'
+#define EMPATE '3'
+
 //Sons tocados quando o botão central é pressionado em diferentes partes do sistema
 #define SOM_PADRAO 0
 #define SOM_FIM_PARTIDA 1
 #define SOM_INICIAR_PARTIDA 2
 
 //Posição na memória RAM do LCD dos caracteres customizados
-#define COPYRIGHT 0
-#define SETA_DIREITA 1
-#define SETA_ESQUERDA 2
-#define SETA_ESPELHADA 3
-#define T_BACKLIGHT_INVERTIDO 4
-#define I_BACKLIGHT_INVERTIDO 5
-#define X_BACKLIGHT_INVERTIDO 6
+#define TROFEU 0
+#define NOTIFICACAO 1
+#define SETA_DIREITA 2
+#define SETA_ESQUERDA 3
+#define SETA_ESPELHADA 4
+#define T_BACKLIGHT_INVERTIDO 5
+#define I_BACKLIGHT_INVERTIDO 6
+#define X_BACKLIGHT_INVERTIDO 7
 
 //Linhas em que as funcionalidades são exibidas no LCD
 #define LINHA_CONTINUAR 0
@@ -66,9 +79,13 @@
 #define LINHA_VOLTAR_JOGADOR_VS_MAQUINA 2
 #define LINHA_INICIAR_JOGADOR_VS_MAQUINA 0
 #define LINHA_INICIAR_JOGADOR_VS_JOGADOR 0
+#define LINHA_JOGAR_NOVAMENTE 2
+#define LINHA_VOLTAR_FIM_PARTIDA 3
+
 
 //A relação entre LINHA_X e X é: se LINHA_X e X existem o valor de X é equivalente ao valor da linha incrementado pelo parâmetro "incremento_linha" da função "AtualizaOpcaoSelecionadaMenu"
-#define MENU_PAUSE 200 //Valor fixo não atrelado a linha (não há linhas durante uma partida)
+#define MENU_PAUSE 200 //Valor fixo não atrelado a nenhuma linha
+#define MENU_FIM_PARTIDA 300
 #define MENU_INICIAL 100 //Valor qualquer (entrará no caso default da estrutura switch)
 #define JOGADOR_VS_JOGADOR LINHA_JOGADOR_VS_JOGADOR
 #define JOGADOR_VS_MAQUINA LINHA_JOGADOR_VS_MAQUINA
@@ -79,6 +96,7 @@
 #define CONTINUAR LINHA_CONTINUAR + 30
 #define CONFIGURAR_TEMPO LINHA_CONFIGURAR_TEMPO + 40
 #define VOLTAR_CONFIGURAR_TEMPO LINHA_VOLTAR_CONFIGURAR_TEMPO + 40
+#define JOGAR_NOVAMENTE LINHA_JOGAR_NOVAMENTE + 50
 
 //Estado dos botões (ACIONADO/DESACIONADO)
 #define ESTADO_BOTAO_ESQUERDA estado_botoes.at(0)
@@ -114,8 +132,12 @@ Preferences preferences; //Para ler e gravar dados na memória flash do microcon
 BluetoothSerial SerialBT;
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
+
 bool turno = BRANCAS;
 bool primeiro_loop = true;
+bool lance_invalido = false;
+int indice_origem = -1;
+int indice_destino = -1;
 unsigned int opcao_selecionada = MENU_INICIAL;
 unsigned int posicao_seta = LINHA_JOGADOR_VS_JOGADOR;
 unsigned int tempo_inicio_turno = 0;
@@ -123,16 +145,19 @@ unsigned int tempo_configurado = 5*60; //Este valor só foi utilizado na primeir
 unsigned int tempo_configurado_anterior = tempo_configurado;
 unsigned int tempo_restante_pretas = tempo_configurado;
 unsigned int tempo_restante_brancas = tempo_configurado;
-unsigned int botao_acionado_anterior = BOTAO_ESQUERDA; //Impede ação se o botão que passa o turno para as brancas for clicado, já que as brancas já iniciam o jogo
+unsigned int quantidade_alteracoes_estado = 0;
+unsigned int tempo_notificacao_lance_invalido = 0;
+char resultado_jogo = '\0';
+String mensagem_recebida = "";
 vector<int> botoes = {PINO_BOTAO_ESQUERDA, PINO_BOTAO_CENTRO, PINO_BOTAO_DIREITA};
 vector<int> casas = {PINO_CASA0, PINO_CASA1, PINO_CASA2, PINO_CASA3, PINO_CASA4, PINO_CASA5, PINO_CASA6, PINO_CASA7};
 vector<bool> estado_botoes = {DESACIONADO, DESACIONADO, DESACIONADO};
-vector<char> estado_atual = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
-vector<char> estado_anterior = {'R', 'C', 'T', 'V', 'V', 'T', 'C', 'R'}; // C = Cavalo, R = Rei, T = Torre, V = Vazio
+vector<String> estado_atual = {"RB", "CB", "TB", "V", "V", "TP", "CP", "RP"}; //C = Cavalo, R = Rei, T = Torre, V = Vazio
+vector<String> estado_anterior = {"RB", "CB", "TB", "V", "V", "TP", "CP", "RP"}; 
 
 void CapturaEstadoAtual();
-void PrintaEstadoAtual();
-void EnviaEstadoAtual();
+void PrintaEstado(vector<String> estado); //Para depuração
+void EnviaMensagem();
 void PrintaMenuInicial();
 void LeBotoes();
 void AtualizaOpcaoSelecionadaMenu(unsigned int primeira_linha_valida, unsigned int ultima_linha_valida, unsigned int incremento_linha, unsigned int som_confirmacao); //A opção selecionada pelo usuário é baseada na posição da seta mostrada no LCD, "incremento_linha" serve para diferenciar opções na mesma linha mas em menus diferentes
@@ -152,8 +177,41 @@ void SomPause();
 void SomFimPartida();
 void SomIniciarPartida();
 void PrintaTextoComSom(unsigned int coluna, unsigned int linha, string texto);
+void CalculaIndicesOrigemDestino();
+void CalculaNumeroAlteracoes();
+void SomLanceInvalido();
+void LimparLinhaLanceInvalido();
+void AguardaMensagem(char primeiro_caractere, char ultimo_caractere);
+void PrintaEstadosAlteracoesIndices(); //Para depuração
+void AnalisaMensagemRecebida();
+void SomVitoria();
+void SomEmpate();
+void PrintaMenuFimPartida();
+void ResetaVariaveis();
 
 //Caracteres customizados
+byte trofeu[] = {
+                 0x0E,
+                 0x1F,
+                 0x0E,
+                 0x0E,
+                 0x04,
+                 0x04,
+                 0x0E,
+                 0x0E
+                };
+
+byte notificacao[] = {
+                      0x04,
+                      0x0E,
+                      0x0E,
+                      0x0E,
+                      0x1F,
+                      0x00,
+                      0x04,
+                      0x00
+                     };
+
 byte seta_direita[] = {
                        0x00,
                        0x04,
@@ -186,17 +244,6 @@ byte seta_espelhada[] = {
                          0x0E,
                          0x04
                         };
-
-byte copyright[] = {
-                    0x00,
-                    0x0E,
-                    0x17,
-                    0x19,
-                    0x19,
-                    0x17,
-                    0x0E,
-                    0x00
-                   };
 
 byte t_backlight_invertido[] = {
                                 0x1F,
@@ -249,15 +296,16 @@ void setup()
 
   lcd.init();
   lcd.backlight();
-  lcd.createChar(SETA_DIREITA, seta_direita); //Na posição 0 (SETA_DIREITA) da memória RAM do LCD está armazenada o caractere customizado da seta apontada para direita
+  lcd.createChar(TROFEU, trofeu); //Na posição 0 (TROFEU) da memória RAM do LCD está armazenada o caractere customizado do troféu
+  lcd.createChar(NOTIFICACAO, notificacao);
+  lcd.createChar(SETA_DIREITA, seta_direita); 
   lcd.createChar(SETA_ESQUERDA, seta_esquerda);
   lcd.createChar(SETA_ESPELHADA, seta_espelhada);
-  lcd.createChar(COPYRIGHT, copyright);
   lcd.createChar(T_BACKLIGHT_INVERTIDO, t_backlight_invertido);
   lcd.createChar(I_BACKLIGHT_INVERTIDO, i_backlight_invertido);
   lcd.createChar(X_BACKLIGHT_INVERTIDO, x_backlight_invertido);
-
-  //PrintaAbertura();
+  
+  PrintaAbertura();
 }
 
 void loop()
@@ -287,6 +335,7 @@ void loop()
       AtualizaOpcaoSelecionadaMenu(LINHA_INICIAR_JOGADOR_VS_JOGADOR, LINHA_VOLTAR_JOGADOR_VS_MAQUINA, 20, SOM_PADRAO);
       break;
 
+    case JOGAR_NOVAMENTE:
     case CONTINUAR:
     case INICIAR_JOGADOR_VS_JOGADOR:
       if(primeiro_loop == true)
@@ -305,13 +354,20 @@ void loop()
           lcd.write(SETA_DIREITA);
         }
         
-        tempo_inicio_turno = millis(); //Armazena o tempo atual para contar 1 segundo desde o início do turno e atualizar o cronômetro
+        tempo_inicio_turno = millis(); //Armazena o tempo atual para periodizar a atualização do cronômetro
         primeiro_loop = false;
       }
-      
+        
       AtualizaCronometro();
       LeBotoes();
       AtualizaTurnoEPause();
+      
+      if(millis() - tempo_notificacao_lance_invalido >= 500 && lance_invalido)
+      {
+        LimparLinhaLanceInvalido();
+        lance_invalido = false;
+      }
+
       break;
 
     case MENU_PAUSE:
@@ -354,15 +410,44 @@ void loop()
       ConfigurarTempo();
     break;
 
+    case MENU_FIM_PARTIDA:
+    if(primeiro_loop == true)
+    {
+      PrintaMenuFimPartida();
+      primeiro_loop = false;
+      posicao_seta = 2;
+
+      lcd.home();
+      lcd.write(TROFEU);
+
+      if(resultado_jogo == VITORIA_BRANCAS)
+      {
+        lcd.print(" Vitoria Brancas");
+        SomVitoria();
+      }
+      else if(resultado_jogo == VITORIA_PRETAS)
+      {
+        lcd.print(" Vitoria Pretas");
+        SomVitoria();
+      }
+      else
+      {
+        lcd.print(" Empate");
+        SomEmpate();
+      }
+
+      ResetaVariaveis();
+    }
+
+    LeBotoes();
+    AtualizaOpcaoSelecionadaMenu(LINHA_JOGAR_NOVAMENTE, LINHA_VOLTAR_FIM_PARTIDA, 50, SOM_INICIAR_PARTIDA);
+    break;
+
     default:
       if(primeiro_loop == true)
       {
         PrintaMenuInicial();
-
-        turno = BRANCAS;
-        primeiro_loop = false;
-        tempo_restante_brancas = tempo_configurado;
-        tempo_restante_pretas = tempo_configurado;
+        ResetaVariaveis();
       }
 
       LeBotoes();
@@ -375,31 +460,52 @@ void CapturaEstadoAtual()
 {
   for(int i=0; i<casas.size(); i++)
   {
-    if (analogRead(casas.at(i)) > VALOR_ANALOGICO_CAVALO - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_CAVALO + TOLERANCIA)
-      estado_atual.at(i) = 'C';
-    else if (analogRead(casas.at(i)) > VALOR_ANALOGICO_REI - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_REI + TOLERANCIA)
-      estado_atual.at(i) = 'R';
-    else if (analogRead(casas.at(i)) > VALOR_ANALOGICO_TORRE - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_TORRE + TOLERANCIA)
-      estado_atual.at(i) = 'T';
+    if (analogRead(casas.at(i)) > VALOR_ANALOGICO_CAVALO_BRANCAS - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_CAVALO_BRANCAS + TOLERANCIA)
+      estado_atual.at(i) = "CB";
+    else if (analogRead(casas.at(i)) > VALOR_ANALOGICO_REI_BRANCAS - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_REI_BRANCAS + TOLERANCIA)
+      estado_atual.at(i) = "RB";
+    else if (analogRead(casas.at(i)) > VALOR_ANALOGICO_TORRE_BRANCAS - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_TORRE_BRANCAS + TOLERANCIA)
+      estado_atual.at(i) = "TB";
+    else if (analogRead(casas.at(i)) > VALOR_ANALOGICO_CAVALO_PRETAS - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_CAVALO_PRETAS + TOLERANCIA)
+      estado_atual.at(i) = "CP";
+    else if (analogRead(casas.at(i)) > VALOR_ANALOGICO_REI_PRETAS - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_REI_PRETAS + TOLERANCIA)
+      estado_atual.at(i) = "RP";
+    else if (analogRead(casas.at(i)) > VALOR_ANALOGICO_TORRE_PRETAS - TOLERANCIA && analogRead(casas.at(i)) < VALOR_ANALOGICO_TORRE_PRETAS + TOLERANCIA)
+      estado_atual.at(i) = "TP";
     else
-      estado_atual.at(i) = 'V';
+      estado_atual.at(i) = "V";
   }
 }
 
-void PrintaEstadoAtual()
+void PrintaEstado(vector<String> estado)
 {
-  for(int i=0; i<estado_atual.size(); i++)
-    Serial.print(estado_atual.at(i));
-
+  for(int i=0; i<estado.size(); i++)
+  {
+    Serial.print(estado.at(i));
+    Serial.print(" ");
+  }
+     
   Serial.println();
 }
 
-void EnviaEstadoAtual()
+void EnviaMensagem()
 {
   String string_estado_atual = "";
 
-  for(int i=0; i<estado_atual.size(); i++)
-    string_estado_atual += estado_atual.at(i);
+  string_estado_atual += '[';
+  string_estado_atual += indice_origem;
+  string_estado_atual += ',';
+  string_estado_atual += indice_destino;
+  string_estado_atual += ',';
+
+  if(turno == BRANCAS)
+    string_estado_atual += tempo_restante_brancas;
+  else
+    string_estado_atual += tempo_restante_pretas;
+
+  string_estado_atual += ',';
+  string_estado_atual += tempo_configurado;
+  string_estado_atual += ']';
   
   SerialBT.println(string_estado_atual);
 }
@@ -439,11 +545,8 @@ void AtualizaOpcaoSelecionadaMenu(unsigned int primeira_linha_valida, unsigned i
     lcd.clear();
 
     if(som_confirmacao == SOM_FIM_PARTIDA && opcao_selecionada == LINHA_ENCERRAR_PARTIDA + incremento_linha)
-    {
       SomFimPartida();
-      botao_acionado_anterior = BOTAO_ESQUERDA; //Reseta o estado do último botão acionado
-    }
-    else if(som_confirmacao == SOM_INICIAR_PARTIDA && opcao_selecionada == LINHA_INICIAR_JOGADOR_VS_JOGADOR + incremento_linha)
+    else if(som_confirmacao == SOM_INICIAR_PARTIDA && (opcao_selecionada == LINHA_INICIAR_JOGADOR_VS_JOGADOR + incremento_linha || opcao_selecionada == LINHA_JOGAR_NOVAMENTE + incremento_linha))
       SomIniciarPartida();
     else
       SomConfirmar();
@@ -523,10 +626,6 @@ void PrintaAbertura()
   PrintaTextoComSom(1, 1, "nteligencia");
   delay(500);  
   PrintaTextoComSom(1, 2, "adrez");
-  delay(700);
-  lcd.setCursor(10, 3);
-  lcd.write(COPYRIGHT);
-  PrintaTextoComSom(11, 3, "Ufsc 2025");
 
   delay(750);
   lcd.clear();
@@ -563,47 +662,90 @@ void AtualizaTurnoEPause()
   }
   else if(ESTADO_BOTAO_ESQUERDA == ACIONADO && ESTADO_BOTAO_DIREITA == ACIONADO)
     return;
-  else if (ESTADO_BOTAO_ESQUERDA == ACIONADO && botao_acionado_anterior != BOTAO_ESQUERDA)
+  else if(ESTADO_BOTAO_DIREITA == ACIONADO && turno == BRANCAS || ESTADO_BOTAO_ESQUERDA == ACIONADO && turno == PRETAS)
   {
-    turno = BRANCAS;
-
-    lcd.setCursor(10, 1); //Apaga a seta das pretas
-    lcd.print(" ");
-
-    lcd.setCursor(9, 1);
-    lcd.write(SETA_ESQUERDA);
-
     CapturaEstadoAtual();
-  
-    PrintaEstadoAtual();
-    estado_anterior = estado_atual;
-    EnviaEstadoAtual();
-    Serial.print("Tempo restante pretas: ");
-    Serial.println(tempo_restante_pretas);
-    SerialBT.println(tempo_restante_pretas);
+    CalculaNumeroAlteracoes();
+    CalculaIndicesOrigemDestino();
 
-    botao_acionado_anterior = BOTAO_ESQUERDA;
+    PrintaEstadosAlteracoesIndices();
+
+    if(quantidade_alteracoes_estado == 2 && indice_origem != -1 && indice_destino != -1)
+    {
+      EnviaMensagem();
+      AguardaMensagem('[', ']');
+      Serial.println(mensagem_recebida);
+      
+      AnalisaMensagemRecebida();
+    }
+    else
+      lance_invalido = true;
+
+    if(lance_invalido)
+    {
+      lcd.setCursor(1, 3);
+      lcd.write(NOTIFICACAO);
+      lcd.setCursor(3, 3);
+      lcd.print("Invalido");
+      SomLanceInvalido();
+      tempo_notificacao_lance_invalido = millis();
+    }
+
+    indice_origem = -1;
+    indice_destino = -1;
+    quantidade_alteracoes_estado = 0;
   }
-  else if(ESTADO_BOTAO_DIREITA == ACIONADO && botao_acionado_anterior != BOTAO_DIREITA)
+}
+
+void AnalisaMensagemRecebida()
+{
+  for(int i=0; i<mensagem_recebida.length(); i++)
   {
-    turno = PRETAS;
+    Serial.print("Mensagem recebida posicao ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.println(mensagem_recebida[i]);
+  }
 
-    lcd.setCursor(9, 1); //Apaga a seta das brancas
-    lcd.print(" ");
+  Serial.println();
+  
+  if(mensagem_recebida[1] == LANCE_INVALIDO)
+    lance_invalido = true;
+    
+  else if(mensagem_recebida[1] == LANCE_VALIDO)
+  {
+    if(mensagem_recebida[4] == PARTIDA_CONTINUA)
+    {
+      if(turno == BRANCAS)
+      {
+        turno = PRETAS;
 
-    lcd.setCursor(10, 1);
-    lcd.write(SETA_DIREITA);
+        lcd.setCursor(9, 1);
+        lcd.print(" "); //Apaga a seta das brancas
 
-    CapturaEstadoAtual();
+        lcd.setCursor(10, 1);
+        lcd.write(SETA_DIREITA);
+      }
+      else
+      {
+        turno = BRANCAS;
 
-    PrintaEstadoAtual();
-    estado_anterior = estado_atual;
-    EnviaEstadoAtual();
-    Serial.print("Tempo restante brancas: ");
-    Serial.println(tempo_restante_brancas);
-    SerialBT.println(tempo_restante_brancas);
+        lcd.setCursor(10, 1);
+        lcd.print(" "); //Apaga a seta das pretas
 
-    botao_acionado_anterior = BOTAO_DIREITA;
+        lcd.setCursor(9, 1);
+        lcd.write(SETA_ESQUERDA);
+      }
+
+      estado_anterior = estado_atual;
+    }
+    else if(mensagem_recebida[4] == EMPATE || mensagem_recebida[4] == VITORIA_BRANCAS || mensagem_recebida[4] == VITORIA_PRETAS)
+    {
+      primeiro_loop = true;
+      opcao_selecionada = MENU_FIM_PARTIDA;
+      resultado_jogo = mensagem_recebida[4];
+      lcd.clear();
+    }
   }
 }
 
@@ -756,4 +898,119 @@ void PrintaTextoComSom(unsigned int coluna, unsigned int linha, string texto)
     tone(PINO_BUZZER, 2000, 20);
     delay(95);
   }
+}
+
+void CalculaIndicesOrigemDestino()
+{
+  for(int i=0; i<estado_atual.size(); i++)
+    {
+      if(estado_atual.at(i) != estado_anterior.at(i))
+      {
+        if(estado_atual.at(i) == "V")
+          indice_origem = i;
+        else
+          indice_destino = i;
+      }
+    }
+}
+
+void CalculaNumeroAlteracoes()
+{
+  for(int i=0; i<estado_atual.size(); i++)
+    if(estado_atual.at(i) != estado_anterior.at(i))
+      quantidade_alteracoes_estado++;
+}
+
+void SomLanceInvalido()
+{
+  tone(PINO_BUZZER, 1200, 75);
+  delay(150);
+  tone(PINO_BUZZER, 1600, 75);
+  noTone(PINO_BUZZER);
+}
+
+void LimparLinhaLanceInvalido()
+{
+  lcd.setCursor(0, 3);
+  lcd.print("                    ");
+}
+
+void AguardaMensagem(char primeiro_caractere, char ultimo_caractere)
+{
+  while(true)
+  {
+    mensagem_recebida = SerialBT.readStringUntil(ultimo_caractere);
+
+    if(mensagem_recebida[0] == primeiro_caractere)
+    {
+      mensagem_recebida += ultimo_caractere;
+      return;
+    }
+  } 
+}
+
+void PrintaEstadosAlteracoesIndices()
+{
+  Serial.print("Estado anterior: ");
+  PrintaEstado(estado_anterior);
+
+  Serial.print("Estado atual: ");
+  PrintaEstado(estado_atual);
+
+  Serial.print("Quantidade alteracoes: ");
+  Serial.println(quantidade_alteracoes_estado);
+  Serial.print("Indice origem: ");
+  Serial.println(indice_origem);
+  Serial.print("Indice_destino: ");
+  Serial.println(indice_destino);
+}
+
+void SomVitoria()
+{
+  tone(PINO_BUZZER, 880, 150);
+  delay(85);
+  tone(PINO_BUZZER, 988, 150);
+  delay(85);
+  tone(PINO_BUZZER, 1047, 200);
+  delay(110);
+  tone(PINO_BUZZER, 1318, 300);
+
+  noTone(PINO_BUZZER);
+}
+
+void SomEmpate()
+{
+  tone(PINO_BUZZER, 1318, 150);
+  delay(85);
+  tone(PINO_BUZZER, 1047, 150);
+  delay(85);
+  tone(PINO_BUZZER, 988, 200);
+  delay(110);
+  tone(PINO_BUZZER, 880, 300);
+
+  noTone(PINO_BUZZER);
+}
+
+void PrintaMenuFimPartida()
+{
+  lcd.setCursor(0, 2);
+  lcd.write(SETA_DIREITA);
+
+  lcd.setCursor(2, 2);
+  lcd.print("Jogar Novamente");
+
+  lcd.setCursor(2, 3);
+  lcd.print("Voltar");
+}
+
+void ResetaVariaveis()
+{
+  turno = BRANCAS;
+  primeiro_loop = false;
+  tempo_restante_brancas = tempo_configurado;
+  tempo_restante_pretas = tempo_configurado;
+  estado_anterior = {"RB", "CB", "TB", "V", "V", "TP", "CP", "RP"};
+  indice_destino = -1;
+  indice_origem = -1;
+  resultado_jogo = '\0';
 }
