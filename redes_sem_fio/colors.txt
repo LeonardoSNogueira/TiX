@@ -1,0 +1,7 @@
+board: 
+dark square : light brown  = #B58863 / rgb(181, 136, 99)
+light square: light brown = #F0D9B5 / rgb(240, 217, 181)
+ 
+background : gray = #4b4847 / rgb(75,72,71)
+
+logo: green = #95ab81 / rgb(149,171,129)
