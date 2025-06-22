@@ -3,12 +3,11 @@ import os
 import tkinter as tk
 from tkinter import filedialog
 import threading
-import socket
 import re
+import serial
 
-# --- Configuration ---
-WINDOW_WIDTH = 1600
-WINDOW_HEIGHT = 900
+WINDOW_WIDTH = 800
+WINDOW_HEIGHT = 450
 BOARD_SIZE = (900, 132)
 SQUARE_SIZE = BOARD_SIZE[0] // 8
 BACKGROUND_COLOR = (75, 72, 71)
@@ -19,12 +18,10 @@ PIECE_START_ORDER = [
 ]
 TIME_CONTROL = 600
 
-# --- Font loading ---
 pygame.font.init()
 FONT = pygame.font.Font('../assets/fonts/DelaGothicOne-Regular.ttf',30)
 pygame.display.set_caption('conecTiX')
 
-# --- Button Class ---
 class Button:
     def __init__(self, rect, text, font, bg_color, text_color, border_color=None, border_radius=8, border_width=0):
         self.rect = pygame.Rect(rect)
@@ -49,7 +46,6 @@ class Button:
     def is_clicked(self, mouse_pos):
         return self.rect.collidepoint(mouse_pos)
     
-# --- Chess Clock Class ---
 class ChessClock:
     def __init__(self, start_seconds):
         self.time_left = start_seconds
@@ -66,7 +62,7 @@ class ChessClock:
     def update(self):
         if self.running:
             now = pygame.time.get_ticks()
-            elapsed = (now - self.last_update) / 1000  # seconds
+            elapsed = (now - self.last_update) / 1000
             self.last_update = now
             self.time_left = max(0, self.time_left - elapsed)
 
@@ -75,7 +71,6 @@ class ChessClock:
         seconds = int(self.time_left) % 60
         return f"{minutes:01}:{seconds:02}"
 
-# --- Asset Loading ---
 def load_image(path, size=None, flip_x=False):
     image = pygame.image.load(path)
     if size:
@@ -98,7 +93,6 @@ def load_assets():
             piece_imgs[key] = load_image(path, (SQUARE_SIZE, SQUARE_SIZE), flip_x=flip_x)
     return board_img, logo_img, piece_imgs
 
-# --- Drawing Functions ---
 def draw_strip_pieces(surface, piece_order, board_rect, piece_images):
     for i, piece_key in enumerate(piece_order):
         if piece_key:
@@ -119,7 +113,6 @@ def get_piece_at_pos(pos, board_rect):
         return None
     return int(col)
 
-# --- Game Logic Functions ---
 def movement_rules(piece, origin, destination, piece_order):
     if piece[1] == 'K':
         return origin != destination and abs(destination - origin) == 1
@@ -213,18 +206,16 @@ def notation(piece_moved, destination, enemy_color, is_actual_capture, piece_ord
 def save_moves(moves_list):
     import sys
     root = tk.Tk()
-    root.withdraw()  # Hide the main window
+    root.withdraw()
     file_path = filedialog.asksaveasfilename(
         defaultextension=".txt",
-        filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+        filetypes=[("Text files", ".txt"), ("All files", ".*")],
         initialdir=os.path.abspath("../games"),
         title="Save Game As"
     )
     if not file_path:
-        return  # User cancelled
-    # Determine result
+        return
     result_str = None
-    # Use the global piece_order to check for checkmate/draw
     global piece_order
     if is_checkmate('b', piece_order):
         result_str = '1-0'
@@ -242,9 +233,9 @@ def save_moves(moves_list):
     with open(file_path, "w") as file:
         for turn_num, turn_moves in enumerate(moves_list):
             pgn_line = f"{turn_num + 1}. "
-            if len(turn_moves) > 0:  # White's move
+            if len(turn_moves) > 0:
                 pgn_line += turn_moves[0]
-            if len(turn_moves) > 1:  # Black's move
+            if len(turn_moves) > 1:
                 pgn_line += f" {turn_moves[1]}"
             file.write(pgn_line + "\n")
         if result_str:
@@ -253,70 +244,61 @@ def save_moves(moves_list):
 def reset_board():
     return PIECE_START_ORDER.copy(), 0, [], None, {}
 
-# --- Bluetooth Comms ---
-def bluetooth_listener(callback):
-    """
-    Listens for incoming bluetooth (TCP) messages from the ESP32 (or simul.py).
-    Calls the provided callback with the received array as arguments.
-    """
+serial_port = None  
+SERIAL_PORT_NAME = 'COM4'  
+SERIAL_BAUDRATE = 9600
+
+def serial_listener(callback):
     def listen():
-        host = 'localhost'
-        port = 65432  
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((host, port))
-            s.listen()
-            print(f"Listening for ESP32/simul.py on {host}:{port}...")
+        global serial_port
+        try:
+            serial_port = serial.Serial(SERIAL_PORT_NAME, SERIAL_BAUDRATE, timeout=1)
+            print(f"Listening for serial data on {SERIAL_PORT_NAME} at {SERIAL_BAUDRATE} baud...")
             while True:
-                conn, addr = s.accept()
-                with conn:
-                    data = conn.recv(1024)
+                if serial_port.in_waiting > 0:
+                    data = serial_port.readline().decode(errors='ignore').strip()
                     if data:
                         try:
-                            arr = eval(data.decode())  # e.g., "[1, 3, 300, 600]"
+                            arr = eval(data) 
                             if isinstance(arr, list):
                                 callback(*arr)
                         except Exception as e:
-                            print(f"Error decoding bluetooth message: {e}")
+                            print(f"Error decoding serial message: {e}")
+        except Exception as e:
+            print(f"Serial connection error: {e}")
     thread = threading.Thread(target=listen, daemon=True)
     thread.start()
 
-# --- Main Game Loop ---
-# Global game state for access in callback
+def send_serial_response(response_arr):
+    global serial_port
+    try:
+        if serial_port and serial_port.is_open:
+            serial_port.write((str(response_arr) + '\n').encode())
+    except Exception as e:
+        print(f"Error sending serial response: {e}")
+
 piece_order = None
 moves = None
 white_clock = None
 black_clock = None
-current_turn = 0  # 0 for white, 1 for black
+current_turn = 0
 
-def send_bluetooth_response(response_arr):
-    host = 'localhost'
-    port = 65433  # Use a different port for responses
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((host, port))
-            s.sendall(str(response_arr).encode())
-    except Exception as e:
-        print(f"Error sending bluetooth response: {e}")
-
-def handle_bluetooth_message(origin, destination, time_remaining, time_control):
+def handle_serial_message(origin, destination, time_remaining, time_control):
     global piece_order, moves, white_clock, black_clock, current_turn, TIME_CONTROL
     TIME_CONTROL = time_control
     piece = piece_order[origin]
     if piece is None:
         print(f"No piece at origin {origin}")
-        send_bluetooth_response([0, 0])
+        send_serial_response([0, 0])
         return
-    # Enforce turn order
     expected_color = 'w' if current_turn == 0 else 'b'
     if piece[0] != expected_color:
         print(f"It's not {piece[0]}'s turn!")
-        send_bluetooth_response([0, 0])
+        send_serial_response([0, 0])
         return
-    # Check if move is legal
     if not legal_move(piece, origin, destination, piece_order):
         print(f"Illegal move: {piece} from {origin} to {destination}")
-        send_bluetooth_response([0, 0])
+        send_serial_response([0, 0])
         return
     captured = piece_order[destination]
     piece_order[destination] = piece
@@ -333,20 +315,18 @@ def handle_bluetooth_message(origin, destination, time_remaining, time_control):
     else:
         black_clock.time_left = time_remaining
         current_turn = 0
-    # Check for win/draw
     winner = 0
     if is_checkmate('b', piece_order):
-        winner = 1  # White wins
+        winner = 1
     elif is_checkmate('w', piece_order):
-        winner = 2  # Black wins
+        winner = 2
     elif is_stalemate('w', piece_order) or is_stalemate('b', piece_order) or is_insufficient_material(piece_order):
-        winner = 3  # Draw
-    send_bluetooth_response([1, winner])
-    print(f"Bluetooth move: {origin}->{destination}, {piece}, time: {time_remaining}")
+        winner = 3
+    send_serial_response([1, winner])
+    print(f"Serial move: {origin}->{destination}, {piece}, time: {time_remaining}")
     print(moves)
 
-# --- Scene Management ---
-current_scene = "main"  # can be 'main' or 'analysis'
+current_scene = "main"
 analysis_moves = []
 analysis_times = []
 analysis_index = 0
@@ -369,10 +349,8 @@ def parse_game_file(file_path):
                 continue
             if line[0].isdigit() is False:
                 continue
-            # Example: 1. N4 596 N5 598
             parts = line.split()
             if len(parts) >= 3:
-                # White move, white time, black move, black time
                 if len(parts) >= 5:
                     moves.append((parts[1], parts[3]))
                     times.append((int(parts[2]), int(parts[4])))
@@ -421,20 +399,17 @@ def set_analysis_state(index):
                 analysis_black_clock.time_left = time_val
 
 def draw_analysis_scene(window, board, board_rect, logo_img, logo_rect, piece_images, FONT):
-    # Move everything down
     top_offset = 60
     left_offset = 100
     board_rect_left = board_rect.copy()
     board_rect_left.left = left_offset
     board_rect_left.top += top_offset
-    # Draw logo centered above the board
     logo_rect_left = logo_rect.copy()
     logo_rect_left.centerx = board_rect_left.centerx
     logo_rect_left.bottom = board_rect_left.top - 10
     window.blit(logo_img, logo_rect_left)
     window.blit(board, board_rect_left)
     draw_strip_pieces(window, analysis_piece_order, board_rect_left, piece_images)
-    # Draw clocks below board
     clock_width, clock_height = 200, 50
     clock_y_offset = board_rect_left.bottom + 20
     white_clock_rect = pygame.Rect(board_rect_left.left, clock_y_offset, clock_width, clock_height)
@@ -446,13 +421,11 @@ def draw_analysis_scene(window, board, board_rect, logo_img, logo_rect, piece_im
     pygame.draw.rect(window, (160, 160, 160), black_clock_rect, border_radius=8, width=2)
     black_time_surface = FONT.render(analysis_black_clock.get_time_str(), True, (160, 160, 160))
     window.blit(black_time_surface, (black_clock_rect.centerx - black_time_surface.get_width() // 2, black_clock_rect.centery - black_time_surface.get_height() // 2))
-    # Draw move list background on the right
     move_list_x = board_rect_left.right + 60
     move_list_y = board_rect_left.top
     move_list_width = 260
     move_list_height = max(360, len(analysis_moves) * 32 + 60)
     pygame.draw.rect(window, (44,43,41), (move_list_x - 20, move_list_y - 20, move_list_width, move_list_height), border_radius=16)
-    # Draw move list (moves only)
     move_font = pygame.font.Font('../assets/fonts/DelaGothicOne-Regular.ttf', 24)
     for i, move_pair in enumerate(analysis_moves):
         move_str = f"{i+1}. {move_pair[0]}"
@@ -460,13 +433,11 @@ def draw_analysis_scene(window, board, board_rect, logo_img, logo_rect, piece_im
             move_str += f" {move_pair[1]}"
         move_surface = move_font.render(move_str, True, (220, 220, 220))
         window.blit(move_surface, (move_list_x, move_list_y + i * 32))
-    # Draw result at the end if present
     if analysis_result:
         result_font = pygame.font.Font('../assets/fonts/DelaGothicOne-Regular.ttf', 28)
         result_surface = result_font.render(analysis_result, True, (149, 171, 129))
         result_y = move_list_y + len(analysis_moves) * 32 + 16
         window.blit(result_surface, (move_list_x, result_y))
-    # Draw navigation buttons below clocks, centered
     nav_button_width, nav_button_height = 120, 50
     nav_y = black_clock_rect.bottom + 30
     total_width = nav_button_width * 2 + 40
@@ -483,31 +454,24 @@ def main():
     global TIME_CONTROL, piece_order, moves, white_clock, black_clock, current_turn
     global current_scene, analysis_moves, analysis_times, analysis_index, analysis_piece_order, analysis_white_clock, analysis_black_clock, analysis_result
     pygame.init()
-    # Initialize game state
     piece_order, _, moves, _, _ = reset_board()
     white_clock = ChessClock(TIME_CONTROL)
     black_clock = ChessClock(TIME_CONTROL)
     current_turn = 0
-    bluetooth_listener(handle_bluetooth_message)
-
+    serial_listener(handle_serial_message)
     window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    # --- Board Loading ---
     board_img, logo_img, piece_images = load_assets()
     board = pygame.Surface(BOARD_SIZE, pygame.SRCALPHA)
     pygame.draw.rect(board, (255, 255, 255, 255), board.get_rect(), border_radius=10)
     board.blit(board_img, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
     board_rect = board.get_rect()
     board_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-    # --- Logo loading ---
     logo_rect = logo_img.get_rect()
     logo_rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 5)
-
     running = True
-
-    # --- Button setup ---
     button_width, button_height = 180, 40
     button_x = (WINDOW_WIDTH - button_width) // 2
-    button_y = board_rect.bottom + 20 + 50 + 20  # below clocks
+    button_y = board_rect.bottom + 20 + 50 + 20
     start_stop_button = Button(
         rect=(button_x, button_y, button_width, button_height),
         text="Start",
@@ -577,12 +541,11 @@ def main():
                         black_clock = ChessClock(TIME_CONTROL)
                         current_turn = 0
                     elif load_button.is_clicked(mouse_pos):
-                        # Load game file and switch to analysis scene
                         root = tk.Tk()
                         root.withdraw()
                         file_path = filedialog.askopenfilename(
                             defaultextension=".txt",
-                            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+                            filetypes=[("Text files", ".txt"), ("All files", ".*")],
                             initialdir=os.path.abspath("../games"),
                             title="Load Game File"
                         )
@@ -605,7 +568,6 @@ def main():
             window.blit(board, board_rect)
             window.blit(logo_img, logo_rect)
             draw_strip_pieces(window, piece_order, board_rect, piece_images)
-            # --- Draw clocks (dynamic) ---
             clock_width, clock_height = 200, 50
             clock_y_offset = board_rect.bottom + 20
             white_clock_rect = pygame.Rect(board_rect.left, clock_y_offset, clock_width, clock_height)
@@ -617,7 +579,6 @@ def main():
             pygame.draw.rect(window, (160, 160, 160), black_clock_rect, border_radius=8, width=2) 
             black_time_surface = FONT.render(black_clock.get_time_str(), True, (160, 160, 160))
             window.blit(black_time_surface, (black_clock_rect.centerx - black_time_surface.get_width() // 2, black_clock_rect.centery - black_time_surface.get_height() // 2))
-            # --- Draw Buttons ---
             start_stop_button.text = "Start"
             start_stop_button.draw(window)
             save_button.draw(window)
