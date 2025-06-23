@@ -273,7 +273,7 @@ def send_serial_response(response_arr):
     global serial_port
     try:
         if serial_port and serial_port.is_open:
-            serial_port.write((str(response_arr) + '\n').encode())
+            serial_port.write((str(response_arr)).encode())
     except Exception as e:
         print(f"Error sending serial response: {e}")
 
