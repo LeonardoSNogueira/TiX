@@ -8,12 +8,12 @@
 #define VALOR_ANALOGICO_VAZIO 4095 // = 0 OHM
 #define VALOR_ANALOGICO_REI_PRETAS 1980 // = 560 OHM (COR RESISTOR = VAMD)
 #define VALOR_ANALOGICO_TORRE_PRETAS 2880 // = 1500 OHM (COR RESISTOR = MVVD)
-#define VALOR_ANALOGICO_CAVALO_PRETAS 240 // = 33 OHM (COR RESISTOR = LLPD)
+#define VALOR_ANALOGICO_CAVALO_PRETAS 3380 // = 3300 OHM (COR RESISTOR = LLVM) (ANTES: 240 = 33 OHM (COR RESISTOR = LLPD))
+#define VALOR_ANALOGICO_TORRE_BRANCAS 0 // = 10 OHM (COR RESISTOR = MPPD) (ANTES: 1063 = 220 OHM (COR RESISTOR = VVMD))
+#define VALOR_ANALOGICO_CAVALO_BRANCAS 511 // = 100 OHM (COR RESISTOR = MPMD)
 #define VALOR_ANALOGICO_REI_BRANCAS 1424 // = 330 OHM (COR RESISTOR = LLMD)
-#define VALOR_ANALOGICO_TORRE_BRANCAS 1063 // = 220 OHM (COR RESISTOR = VVMD)
-#define VALOR_ANALOGICO_CAVALO_BRANCAS 511 // = 10 0OHM (COR RESISTOR = MPMD)
 
-#define TOLERANCIA 120 //Tolerância das leituras dos valores analógicos
+#define TOLERANCIA 210 //Tolerância das leituras dos valores analógicos
 
 #define PINO_CASA0 34
 #define PINO_CASA1 35
@@ -29,7 +29,7 @@
 #define PINO_BOTAO_ESQUERDA 15
 
 #define PINO_BUZZER 21
-
+#define PINO_LED_BLUETOOTH 13
 #define PINO_SDA 23
 #define PINO_SCL 22
 
@@ -82,7 +82,6 @@
 #define LINHA_JOGAR_NOVAMENTE 2
 #define LINHA_VOLTAR_FIM_PARTIDA 3
 
-
 //A relação entre LINHA_X e X é: se LINHA_X e X existem o valor de X é equivalente ao valor da linha incrementado pelo parâmetro "incremento_linha" da função "AtualizaOpcaoSelecionadaMenu"
 #define MENU_PAUSE 200 //Valor fixo não atrelado a nenhuma linha
 #define MENU_FIM_PARTIDA 300
@@ -132,10 +131,11 @@ Preferences preferences; //Para ler e gravar dados na memória flash do microcon
 BluetoothSerial SerialBT;
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
-
 bool turno = BRANCAS;
 bool primeiro_loop = true;
 bool lance_invalido = false;
+bool existe_cliente = false;
+bool existe_cliente_anterior = false;
 int indice_origem = -1;
 int indice_destino = -1;
 unsigned int opcao_selecionada = MENU_INICIAL;
@@ -188,6 +188,7 @@ void SomVitoria();
 void SomEmpate();
 void PrintaMenuFimPartida();
 void ResetaVariaveis();
+void VerificaClienteConectado();
 
 //Caracteres customizados
 byte trofeu[] = {
@@ -284,10 +285,15 @@ void setup()
   Wire.begin(PINO_SDA, PINO_SCL); //Inicia a comunicação I2C
 
   pinMode(PINO_BUZZER, OUTPUT);
+  pinMode(PINO_LED_BLUETOOTH, OUTPUT);
+
   for (int i = 0; i < casas.size(); i++)
     pinMode(casas.at(i), INPUT);
   for (int i = 0; i < botoes.size(); i++)
     pinMode(botoes.at(i), INPUT_PULLUP);
+
+  digitalWrite(PINO_BUZZER, LOW);
+  digitalWrite(PINO_LED_BLUETOOTH, LOW); 
   
   preferences.begin("dados", true); //Inicia a memória não volátil (para salvar as configurações e recuperar mesmo após o microcontrolador delsigar)
   tempo_configurado = preferences.getInt("tempo", 5*60);
@@ -310,6 +316,8 @@ void setup()
 
 void loop()
 {
+  VerificaClienteConectado();
+
   switch (opcao_selecionada)
   {
     case VOLTAR_CONFIGURAR_TEMPO:
@@ -475,7 +483,13 @@ void CapturaEstadoAtual()
       estado_atual.at(i) = "TP";
     else
       estado_atual.at(i) = "V";
+
+    
+    Serial.print(analogRead(casas.at(i)));
+    Serial.print(" ");
   }
+
+  Serial.println();
 }
 
 void PrintaEstado(vector<String> estado)
@@ -496,8 +510,10 @@ void EnviaMensagem()
   string_estado_atual += '[';
   string_estado_atual += indice_origem;
   string_estado_atual += ',';
+  string_estado_atual += ' ';
   string_estado_atual += indice_destino;
   string_estado_atual += ',';
+  string_estado_atual += ' ';
 
   if(turno == BRANCAS)
     string_estado_atual += tempo_restante_brancas;
@@ -505,6 +521,7 @@ void EnviaMensagem()
     string_estado_atual += tempo_restante_pretas;
 
   string_estado_atual += ',';
+  string_estado_atual += ' ';
   string_estado_atual += tempo_configurado;
   string_estado_atual += ']';
   
@@ -958,11 +975,18 @@ void AguardaMensagem(char primeiro_caractere, char ultimo_caractere)
   {
     mensagem_recebida = SerialBT.readStringUntil(ultimo_caractere);
 
+    if(mensagem_recebida.length() != 0)
+    {
+      Serial.print("Mensagem recebida (depuracao)");
+      Serial.println(mensagem_recebida);
+    }
+
     if(mensagem_recebida[0] == primeiro_caractere)
     {
       mensagem_recebida += ultimo_caractere;
       return;
     }
+
   } 
 }
 
@@ -1030,4 +1054,19 @@ void ResetaVariaveis()
   indice_destino = -1;
   indice_origem = -1;
   resultado_jogo = '\0';
+}
+
+void VerificaClienteConectado()
+{
+  existe_cliente = SerialBT.hasClient();
+
+  if(existe_cliente != existe_cliente_anterior)
+  {
+    if(existe_cliente)
+      digitalWrite(PINO_LED_BLUETOOTH, HIGH);
+    else
+      digitalWrite(PINO_LED_BLUETOOTH, LOW);
+
+    existe_cliente_anterior = existe_cliente;
+  }
 }
