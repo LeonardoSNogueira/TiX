@@ -245,7 +245,7 @@ def reset_board():
     return PIECE_START_ORDER.copy(), 0, [], None, {}
 
 serial_port = None  
-SERIAL_PORT_NAME = 'COM4'  
+SERIAL_PORT_NAME = 'COM3'  
 SERIAL_BAUDRATE = 9600
 
 def serial_listener(callback):
@@ -300,6 +300,17 @@ def handle_serial_message(origin, destination, time_remaining, time_control):
         print(f"Illegal move: {piece} from {origin} to {destination}")
         send_serial_response([0, 0])
         return
+    if time_remaining == 0:
+        if current_turn == 0:
+            send_serial_response([1,2])
+            print(f"Serial move: {origin}->{destination}, {piece}, time: {time_remaining}")
+            print(moves)
+            return
+        else:
+            send_serial_response([1,1])
+            print(f"Serial move: {origin}->{destination}, {piece}, time: {time_remaining}")
+            print(moves)
+            return
     captured = piece_order[destination]
     piece_order[destination] = piece
     piece_order[origin] = None
@@ -448,7 +459,7 @@ def draw_analysis_scene(window, board, board_rect, logo_img, logo_rect, piece_im
     next_button = Button(next_button_rect, "Next", FONT, (44,43,41), (149,171,129))
     prev_button.draw(window)
     next_button.draw(window)
-    return prev_button, next_button
+    return prev_button, next_button 
 
 def main():
     global TIME_CONTROL, piece_order, moves, white_clock, black_clock, current_turn
@@ -525,9 +536,32 @@ def main():
                         current_turn = 0
                     elif event.key == pygame.K_ESCAPE:
                         running = False
+                    elif event.key == pygame.K_l:
+                        root = tk.Tk()
+                        root.withdraw()
+                        file_path = filedialog.askopenfilename(
+                            defaultextension=".txt",
+                            filetypes=[("Text files", ".txt"), ("All files", ".*")],
+                            initialdir=os.path.abspath("../games"),
+                            title="Load Game File"
+                        )
+                        if file_path:
+                            analysis_moves, analysis_times, analysis_result = parse_game_file(file_path)
+                            analysis_index = -1
+                            set_analysis_state(analysis_index)
+                            current_scene = "analysis"
                 elif current_scene == "analysis":
                     if event.key == pygame.K_ESCAPE:
                         current_scene = "main"
+                    if event.key == pygame.K_LEFT:
+                        if analysis_index > -1:
+                            analysis_index -= 1
+                            set_analysis_state(analysis_index)
+                    if event.key == pygame.K_RIGHT:
+                        if analysis_index < len(analysis_moves)*2-1:
+                            analysis_index += 1
+                            set_analysis_state(analysis_index)
+                        
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = pygame.mouse.get_pos()
                 if current_scene == "main":
