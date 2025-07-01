@@ -311,7 +311,7 @@ void setup()
   lcd.createChar(I_BACKLIGHT_INVERTIDO, i_backlight_invertido);
   lcd.createChar(X_BACKLIGHT_INVERTIDO, x_backlight_invertido);
   
-  //PrintaAbertura();
+  PrintaAbertura();
 }
 
 void loop()
@@ -332,26 +332,15 @@ void loop()
       AtualizaOpcaoSelecionadaMenu(LINHA_INICIAR_JOGADOR_VS_JOGADOR, LINHA_VOLTAR_JOGADOR_VS_JOGADOR, 10, SOM_INICIAR_PARTIDA);
       break;
 
-    case JOGADOR_VS_MAQUINA:
-      if(primeiro_loop == true)
-      {
-        PrintaMenuJogadorVsMaquina();
-        primeiro_loop = false;
-      }
-
-      LeBotoes();
-      AtualizaOpcaoSelecionadaMenu(LINHA_INICIAR_JOGADOR_VS_JOGADOR, LINHA_VOLTAR_JOGADOR_VS_MAQUINA, 20, SOM_PADRAO);
-      break;
-
     case JOGAR_NOVAMENTE:
     case CONTINUAR:
     case INICIAR_JOGADOR_VS_JOGADOR:
       if(primeiro_loop == true)
       {
         lcd.home();
-        lcd.print(" Brancas    Pretas");
+        lcd.print(" Pretas    Brancas");
 
-        if(turno == BRANCAS)
+        if(turno == PRETAS)
         {
           lcd.setCursor(9, 1);
           lcd.write(SETA_ESQUERDA);
@@ -460,7 +449,7 @@ void loop()
       }
 
       LeBotoes();
-      AtualizaOpcaoSelecionadaMenu(LINHA_JOGADOR_VS_JOGADOR, LINHA_JOGADOR_VS_MAQUINA, 0, SOM_PADRAO);
+      AtualizaOpcaoSelecionadaMenu(LINHA_JOGADOR_VS_JOGADOR, LINHA_JOGADOR_VS_JOGADOR, 0, SOM_PADRAO);
       break;
   }
 }
@@ -535,9 +524,6 @@ void PrintaMenuInicial()
 
   lcd.setCursor(2, 0);
   lcd.print("Jogador X Jogador");
-
-  lcd.setCursor(2, 1);
-  lcd.print("Jogador X Maquina");
 }
 
 void LeBotoes()
@@ -665,8 +651,8 @@ void AtualizaCronometro() //Sobreecreve dados ciclicamente mesmo sem terem mudad
     tempo_restante_pretas--;
   }
   
-  PrintaTempo(1, 1, tempo_restante_brancas);
-  PrintaTempo(12, 1, tempo_restante_pretas);
+  PrintaTempo(12, 1, tempo_restante_brancas);
+  PrintaTempo(1, 1, tempo_restante_pretas);
 
   if(tempo_restante_brancas <= 0)
   {
