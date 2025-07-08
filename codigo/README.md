@@ -1,4 +1,4 @@
-# Xadrez 1D com ESP32
+# Como Rodar o Código
 
 Este projeto implementa um protótipo funcional de um jogo de Xadrez 1D utilizando um ESP32. A comunicação é feita via Bluetooth, e as partidas são registradas automaticamente na memória do dispositivo para análise posterior.
 
@@ -67,9 +67,11 @@ pip install pygame pyserial
 
 #### Passo 3: Descobrir a porta COM do ESP32
 
-1. Aperte `Win + X` e selecione **Gerenciador de Dispositivos**.
-2. Vá até a seção **Portas (COM e LPT)**.
-3. Anote o nome da porta COM do seu ESP32 (exemplo: `COM5`, `COM7`, etc.).
+1. Conecte-se na rede Bluetooth do ESP32.
+2. Aperte `Win + X` e selecione **Gerenciador de Dispositivos**.
+3. Vá até a seção **Ação** e selecione **Dispositivos e Impressoras**.
+4. Selecione o dispositivo que está conectado via Bluetooth e vá em **Propriedades**
+5. Selecione a aba **Hardware** e anote a porta COM (exemplo: `COM5`, `COM7`, etc.).
 
 ---
 
