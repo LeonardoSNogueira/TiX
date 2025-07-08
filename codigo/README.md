@@ -40,6 +40,77 @@ Após o upload:
 - Uma rede Bluetooth com o nome **TiX** estará disponível para emparelhamento com o computador ou dispositivo móvel.
 
 ---
+---
+
+### Como executar o programa Python (`main.py`)
+
+Este programa é responsável por se comunicar com o ESP32 via **Bluetooth (porta COM)** e exibir a interface gráfica do sistema.
+
+#### Passo 1: Instalar as bibliotecas necessárias
+
+Abra o terminal (Prompt de Comando, PowerShell ou terminal do VS Code) e digite:
+
+```bash
+pip install pygame pyserial
+```
+
+---
+
+#### Passo 2: Emparelhar o ESP32 via Bluetooth
+
+1. Ligue o ESP32.
+2. No seu PC com Windows, vá em **Configurações > Dispositivos > Bluetooth e outros dispositivos**.
+3. Clique em **"Adicionar dispositivo Bluetooth"** e selecione o dispositivo chamado **TiX** (ou o nome que aparecer).
+4. Aguarde até que ele esteja emparelhado.
+
+---
+
+#### Passo 3: Descobrir a porta COM do ESP32
+
+1. Aperte `Win + X` e selecione **Gerenciador de Dispositivos**.
+2. Vá até a seção **Portas (COM e LPT)**.
+3. Anote o nome da porta COM do seu ESP32 (exemplo: `COM5`, `COM7`, etc.).
+
+---
+
+#### Passo 4: Atualizar o código com a porta COM correta
+
+Abra o arquivo `main.py` no seu editor de código.
+
+1. Procure a linha (perto do final do código):
+
+   ```python
+   SERIAL_PORT_NAME = 'COM3'
+   ```
+
+2. Substitua `'COM3'` pela COM correta que você viu no passo anterior.
+
+   **Exemplo:**  
+   Se a porta do seu ESP32 for `COM7`, a linha deve ficar assim:
+
+   ```python
+   SERIAL_PORT_NAME = 'COM7'
+   ```
+
+---
+
+#### Passo 5: Executar o programa
+
+No terminal, dentro da pasta onde está o `main.py`, rode o comando:
+
+```bash
+python main.py
+```
+
+A interface gráfica do sistema será aberta, e ele começará a se comunicar com o ESP32.
+
+---
+
+**Se algo não funcionar**:
+
+- Verifique se a COM está correta e se o ESP32 está emparelhado.
+- Confira se o Bluetooth está ativado.
+- Veja se o driver USB/Bluetooth do seu ESP32 está instalado corretamente.
 
 Se tiver dúvidas ou encontrar erros durante a instalação ou execução, verifique:
 - Se os drivers USB do ESP32 estão corretamente instalados.
