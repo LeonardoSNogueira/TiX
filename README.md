@@ -55,6 +55,6 @@ O **TiX** é um tabuleiro inteligente para o **Xadrez Unidimensional (1D)** — 
 ## 📎 Documentos do Projeto
 
 - 📄 [Relatório Final](relatorio/relatorio_final.pdf)  
-- 🎞️ [Apresentação em Slides](apresentacao/apresentacao.pdf)
+- 🎞️ [Apresentação em Slides](apresentacao/slides_apresentacao.pdf)
 
 ---
