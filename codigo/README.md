@@ -65,7 +65,7 @@ pip install pygame pyserial
 
 ---
 
-#### Passo 3: Descobrir a porta COM do ESP32
+#### Passo 3: Descobrir a porta COM do Bluetooth do ESP32
 
 1. Conecte-se na rede Bluetooth do ESP32.
 2. Aperte `Win + X` e selecione **Gerenciador de Dispositivos**.
